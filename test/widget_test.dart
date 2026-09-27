@@ -1,30 +1,54 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:nex_ai/main.dart';
+import 'package:nex_ai/core/constants.dart';
+import 'package:nex_ai/features/conversation/domain/entities/conversation.dart';
+import 'package:nex_ai/features/conversation/domain/entities/message.dart';
+import 'package:nex_ai/features/conversation/domain/repositories/chat_repository.dart';
+import 'package:nex_ai/features/conversation/presentation/providers/conversation_provider.dart';
+
+class FakeChatRepository implements ChatRepository {
+  @override
+  Future<List<Message>> getHistory(String conversationId) async => [];
+
+  @override
+  Future<List<Conversation>> getUserConversations(String userId) async => [];
+
+  @override
+  Future<String> sendMessage({
+    required String userId,
+    required String conversationId,
+    required String message,
+    String? companionName,
+    String? tone,
+  }) async => 'Hello from fake companion';
+
+  @override
+  Future<String> startNewConversation({required String userId, String? title}) async => 'conv_test_123';
+}
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('App renders without crashing', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({
+      AppConstants.keyActiveConversationId: 'conv_test_123',
+      AppConstants.keyUserId: 'user_test',
+    });
+    final prefs = await SharedPreferences.getInstance();
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          chatRepositoryProvider.overrideWithValue(FakeChatRepository()),
+        ],
+        child: const NexAiApp(),
+      ),
+    );
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
     await tester.pump();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.byType(NexAiApp), findsOneWidget);
   });
 }
