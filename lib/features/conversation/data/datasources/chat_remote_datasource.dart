@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import '../../../../core/network/dio_client.dart';
 import '../../domain/entities/message.dart';
@@ -6,6 +7,13 @@ import '../../domain/entities/conversation.dart';
 abstract class ChatRemoteDataSource {
   Future<String> createConversation(String userId, [String? title]);
   Future<String> sendMessage({
+    required String userId,
+    required String conversationId,
+    required String message,
+    String? companionName,
+    String? tone,
+  });
+  Stream<String> streamMessage({
     required String userId,
     required String conversationId,
     required String message,
@@ -58,6 +66,58 @@ class ChatRemoteDataSourceImpl implements ChatRemoteDataSource {
         },
       );
       return response.data['response'] as String;
+    } on DioException catch (e) {
+      throw dioClient.handleError(e);
+    }
+  }
+
+  @override
+  Stream<String> streamMessage({
+    required String userId,
+    required String conversationId,
+    required String message,
+    String? companionName,
+    String? tone,
+  }) async* {
+    try {
+      final response = await dioClient.dio.post<ResponseBody>(
+        '/chat/stream',
+        data: {
+          'user_id': userId,
+          'conversation_id': conversationId,
+          'message': message,
+          'companion_name': ?companionName,
+          'tone': ?tone,
+        },
+        options: Options(responseType: ResponseType.stream),
+      );
+
+      final stream = response.data?.stream;
+      if (stream == null) return;
+
+      String buffer = '';
+      await for (final chunk in stream) {
+        final text = utf8.decode(chunk);
+        buffer += text;
+        final lines = buffer.split('\n');
+        buffer = lines.removeLast();
+
+        for (final line in lines) {
+          final trimmed = line.trim();
+          if (trimmed.startsWith('data:')) {
+            final dataStr = trimmed.substring(5).trim();
+            if (dataStr.isNotEmpty) {
+              try {
+                final map = jsonDecode(dataStr);
+                final token = map['token'] as String? ?? '';
+                if (token.isNotEmpty) {
+                  yield token;
+                }
+              } catch (_) {}
+            }
+          }
+        }
+      }
     } on DioException catch (e) {
       throw dioClient.handleError(e);
     }

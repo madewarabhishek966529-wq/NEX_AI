@@ -30,6 +30,17 @@ class FakeChatRepository implements ChatRepository {
 
   @override
   Future<bool> deleteConversation(String conversationId) async => true;
+
+  @override
+  Stream<String> streamMessage({
+    required String userId,
+    required String conversationId,
+    required String message,
+    String? companionName,
+    String? tone,
+  }) async* {
+    yield 'Hello from fake companion';
+  }
 }
 
 void main() {

@@ -88,6 +88,55 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
+  Stream<String> streamMessage({
+    required String userId,
+    required String conversationId,
+    required String message,
+    String? companionName,
+    String? tone,
+  }) async* {
+    String accumulated = '';
+    try {
+      await for (final token in remoteDataSource.streamMessage(
+        userId: userId,
+        conversationId: conversationId,
+        message: message,
+        companionName: companionName,
+        tone: tone,
+      )) {
+        accumulated += token;
+        yield token;
+      }
+    } catch (_) {
+      final fallback = _generateOfflineFallback(message, companionName ?? 'Aura');
+      accumulated = fallback;
+      final words = fallback.split(' ');
+      for (int i = 0; i < words.length; i++) {
+        yield i < words.length - 1 ? '${words[i]} ' : words[i];
+        await Future.delayed(const Duration(milliseconds: 30));
+      }
+    }
+
+    if (accumulated.isNotEmpty) {
+      final currentCached = await localDataSource.getCachedMessages(conversationId);
+      final updated = List<Message>.from(currentCached)
+        ..add(Message(
+          id: 'msg_${DateTime.now().millisecondsSinceEpoch}_u',
+          role: 'user',
+          text: message,
+          timestamp: DateTime.now(),
+        ))
+        ..add(Message(
+          id: 'msg_${DateTime.now().millisecondsSinceEpoch}_a',
+          role: 'assistant',
+          text: accumulated,
+          timestamp: DateTime.now(),
+        ));
+      await localDataSource.cacheMessages(conversationId, updated);
+    }
+  }
+
+  @override
   Future<List<Message>> getHistory(String conversationId) async {
     try {
       final remoteList = await remoteDataSource.getHistory(conversationId);

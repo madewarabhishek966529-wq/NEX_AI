@@ -17,6 +17,15 @@ abstract class ChatRepository {
     String? tone,
   });
 
+  /// Streams generated speech text response chunk by chunk
+  Stream<String> streamMessage({
+    required String userId,
+    required String conversationId,
+    required String message,
+    String? companionName,
+    String? tone,
+  });
+
   /// Retrieves the message history for a given conversation
   Future<List<Message>> getHistory(String conversationId);
 

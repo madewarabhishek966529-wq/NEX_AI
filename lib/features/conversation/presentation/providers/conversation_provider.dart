@@ -14,6 +14,7 @@ import '../../domain/usecases/get_history.dart';
 import '../../domain/usecases/start_new_conversation.dart';
 import '../../domain/usecases/get_user_conversations.dart';
 import '../../domain/usecases/delete_conversation.dart';
+import '../../domain/usecases/stream_message.dart';
 import '../../data/datasources/chat_remote_datasource.dart';
 import '../../data/datasources/chat_local_datasource.dart';
 import '../../data/repositories/chat_repository_impl.dart';
@@ -64,6 +65,10 @@ final getUserConversationsUseCaseProvider = Provider<GetUserConversationsUseCase
 
 final deleteConversationUseCaseProvider = Provider<DeleteConversationUseCase>((ref) {
   return DeleteConversationUseCase(ref.watch(chatRepositoryProvider));
+});
+
+final streamMessageUseCaseProvider = Provider<StreamMessageUseCase>((ref) {
+  return StreamMessageUseCase(ref.watch(chatRepositoryProvider));
 });
 
 // ----------------- State Model -----------------
@@ -141,6 +146,7 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
   final StartNewConversationUseCase startNewConversationUseCase;
   final GetUserConversationsUseCase getUserConversationsUseCase;
   final DeleteConversationUseCase deleteConversationUseCase;
+  final StreamMessageUseCase streamMessageUseCase;
   final ChatLocalDataSource localDataSource;
   final SharedPreferences prefs;
 
@@ -154,6 +160,7 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
     required this.startNewConversationUseCase,
     required this.getUserConversationsUseCase,
     required this.deleteConversationUseCase,
+    required this.streamMessageUseCase,
     required this.localDataSource,
     required this.prefs,
   }) : super(const ConversationStateData()) {
@@ -342,7 +349,7 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
       } catch (_) {}
     }
 
-    // 1. Add user message optimistically
+    // 1. Add user message optimistically and initialize empty assistant message placeholder
     final userMsg = Message(
       id: 'msg_${DateTime.now().millisecondsSinceEpoch}_u',
       role: 'user',
@@ -350,8 +357,16 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
       timestamp: DateTime.now(),
     );
 
+    final assistantMsgId = 'msg_${DateTime.now().millisecondsSinceEpoch}_a';
+    final initialAssistantMsg = Message(
+      id: assistantMsgId,
+      role: 'assistant',
+      text: '',
+      timestamp: DateTime.now(),
+    );
+
     state = state.copyWith(
-      messages: [...state.messages, userMsg],
+      messages: [...state.messages, userMsg, initialAssistantMsg],
       currentTranscript: '',
       isListening: false,
       avatarState: ConversationState.thinking,
@@ -359,38 +374,44 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
     );
 
     try {
-      // 2. Call API via Use Case
-      final reply = await sendMessageUseCase.execute(
+      // 2. Stream AI tokens chunk by chunk
+      String accumulated = '';
+      await for (final token in streamMessageUseCase.execute(
         userId: userId,
         conversationId: convId,
         message: trimmed,
         companionName: state.companionName,
         tone: state.companionTone.value,
-      );
+      )) {
+        accumulated += token;
 
-      final assistantMsg = Message(
-        id: 'msg_${DateTime.now().millisecondsSinceEpoch}_a',
-        role: 'assistant',
-        text: reply,
-        timestamp: DateTime.now(),
-      );
+        final updated = state.messages.map((m) {
+          if (m.id == assistantMsgId) {
+            return Message(
+              id: m.id,
+              role: m.role,
+              text: accumulated,
+              timestamp: m.timestamp,
+            );
+          }
+          return m;
+        }).toList();
 
-      // 3. Update messages and state
-      state = state.copyWith(
-        messages: [...state.messages, assistantMsg],
-        avatarState: ConversationState.speaking,
-      );
+        state = state.copyWith(
+          messages: updated,
+          avatarState: ConversationState.speaking,
+        );
+      }
 
-      // Refresh list to show updated snippets
+      // Refresh archive preview
       loadUserConversations();
 
-      // 4. Voice output (TTS)
-      if (state.isTtsEnabled) {
+      // 3. Voice output (TTS)
+      if (state.isTtsEnabled && accumulated.trim().isNotEmpty) {
         await _tts.stop();
-        await _tts.speak(reply);
+        await _tts.speak(accumulated.trim());
       } else {
-        // Return to idle after a brief pause if TTS is disabled
-        await Future.delayed(const Duration(milliseconds: 1500));
+        await Future.delayed(const Duration(milliseconds: 1000));
         state = state.copyWith(avatarState: ConversationState.idle);
       }
     } catch (e) {
@@ -507,6 +528,7 @@ final conversationProvider = StateNotifierProvider<ConversationNotifier, Convers
     startNewConversationUseCase: ref.watch(startNewConversationUseCaseProvider),
     getUserConversationsUseCase: ref.watch(getUserConversationsUseCaseProvider),
     deleteConversationUseCase: ref.watch(deleteConversationUseCaseProvider),
+    streamMessageUseCase: ref.watch(streamMessageUseCaseProvider),
     localDataSource: ref.watch(chatLocalDataSourceProvider),
     prefs: ref.watch(sharedPreferencesProvider),
   );

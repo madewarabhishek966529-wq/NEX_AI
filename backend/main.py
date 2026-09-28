@@ -1,9 +1,12 @@
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, AsyncGenerator
 from datetime import datetime, timezone
 import os
+import json
+import asyncio
 import logging
 
 try:
@@ -126,6 +129,65 @@ def generate_ai_response(system_prompt: str, history: List[Dict[str, str]], user
     else:
         return f"I hear you. Tell me more about that, I'm really curious to know what you think."
 
+async def stream_ai_response(system_prompt: str, history: List[Dict[str, str]], user_message: str) -> AsyncGenerator[str, None]:
+    """
+    Streams AI tokens asynchronously from Gemini, Groq, or fallback generator.
+    """
+    # 1. Try Gemini streaming
+    if settings.GEMINI_API_KEY:
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=settings.GEMINI_API_KEY)
+            contents = []
+            for h in history:
+                role = "user" if h["role"] == "user" else "model"
+                contents.append({"role": role, "parts": [h["content"]]})
+            contents.append({"role": "user", "parts": [user_message]})
+
+            model = genai.GenerativeModel(
+                model_name=settings.AI_MODEL,
+                system_instruction=system_prompt
+            )
+            response = model.generate_content(contents, stream=True)
+            for chunk in response:
+                if chunk.text:
+                    yield chunk.text
+            return
+        except Exception as e:
+            logger.warning(f"Gemini streaming error: {e}. Falling back...")
+
+    # 2. Try Groq streaming
+    if settings.GROQ_API_KEY:
+        try:
+            from groq import Groq
+            client = Groq(api_key=settings.GROQ_API_KEY)
+            messages = [{"role": "system", "content": system_prompt}]
+            for h in history:
+                messages.append({"role": h["role"], "content": h["content"]})
+            messages.append({"role": "user", "content": user_message})
+
+            completion = client.chat.completions.create(
+                messages=messages,
+                model="llama-3.1-8b-instant",
+                max_tokens=150,
+                temperature=0.7,
+                stream=True,
+            )
+            for chunk in completion:
+                delta = chunk.choices[0].delta.content or ""
+                if delta:
+                    yield delta
+            return
+        except Exception as e:
+            logger.warning(f"Groq streaming error: {e}. Falling back...")
+
+    # 3. Contextual Offline Fallback Streaming (smooth simulated word flow)
+    full_text = generate_ai_response(system_prompt, history, user_message)
+    words = full_text.split(" ")
+    for i, w in enumerate(words):
+        yield (w + " " if i < len(words) - 1 else w)
+        await asyncio.sleep(0.04)
+
 # ----------------- Endpoints -----------------
 @app.get("/health", tags=["Health"])
 async def health():
@@ -194,6 +256,58 @@ async def chat(req: ChatRequest):
     return ChatResponse(
         response=ai_text,
         conversation_id=req.conversation_id
+    )
+
+@app.post("/chat/stream", tags=["Chat"])
+async def chat_stream(req: ChatRequest):
+    if not req.message.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Message cannot be empty"
+        )
+
+    db.ensure_conversation(req.conversation_id, req.user_id)
+    name = req.companion_name or settings.COMPANION_NAME
+    tone = req.tone or settings.COMPANION_TONE
+    system_prompt, history = memory_manager.get_context_for_prompt(
+        conversation_id=req.conversation_id,
+        companion_name=name,
+        tone=tone
+    )
+
+    async def event_generator():
+        collected_chunks = []
+        async for chunk in stream_ai_response(system_prompt, history, req.message):
+            collected_chunks.append(chunk)
+            payload = json.dumps({"token": chunk, "done": False})
+            yield f"data: {payload}\n\n"
+
+        complete_text = "".join(collected_chunks).strip()
+        db.add_message(req.conversation_id, "user", req.message)
+        db.add_message(req.conversation_id, "assistant", complete_text)
+
+        # Trigger rolling summary check if threshold reached
+        if memory_manager.should_update_summary(req.conversation_id):
+            try:
+                recent_msgs = db.get_messages(req.conversation_id)
+                dialogue = "\n".join([f"{m['role']}: {m['text']}" for m in recent_msgs])
+                summary_prompt = f"Summarize this conversation concisely in 3 sentences:\n\n{dialogue}"
+                new_summary = generate_ai_response("You are an expert summarizer.", [], summary_prompt)
+                db.update_conversation_summary(req.conversation_id, new_summary)
+            except Exception as e:
+                logger.warning(f"Summary update error: {e}")
+
+        final_payload = json.dumps({"token": "", "done": True, "full_text": complete_text})
+        yield f"data: {final_payload}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Content-Type": "text/event-stream",
+        }
     )
 
 @app.delete("/conversation/{conversation_id}", tags=["Conversation"])

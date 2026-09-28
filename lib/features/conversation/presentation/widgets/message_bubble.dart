@@ -81,14 +81,35 @@ class MessageBubble extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 6),
-            SelectableText(
-              message.text,
-              style: const TextStyle(
-                fontSize: 14.5,
-                color: AppTheme.textPrimary,
-                height: 1.4,
+            if (message.text.isEmpty && !isUser)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(strokeWidth: 1.5, color: AppTheme.secondaryNeon),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Thinking...',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontStyle: FontStyle.italic,
+                      color: AppTheme.textMuted.withValues(alpha: 0.8),
+                    ),
+                  ),
+                ],
+              )
+            else
+              SelectableText(
+                message.text,
+                style: const TextStyle(
+                  fontSize: 14.5,
+                  color: AppTheme.textPrimary,
+                  height: 1.4,
+                ),
               ),
-            ),
             const SizedBox(height: 4),
             Row(
               mainAxisSize: MainAxisSize.min,
