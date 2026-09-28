@@ -35,6 +35,7 @@ class ChatRepositoryImpl implements ChatRepository {
     required String message,
     String? companionName,
     String? tone,
+    String? imageBase64,
   }) async {
     try {
       final aiResponse = await remoteDataSource.sendMessage(
@@ -43,6 +44,7 @@ class ChatRepositoryImpl implements ChatRepository {
         message: message,
         companionName: companionName,
         tone: tone,
+        imageBase64: imageBase64,
       );
 
       // Save/update local cache
@@ -53,6 +55,7 @@ class ChatRepositoryImpl implements ChatRepository {
           role: 'user',
           text: message,
           timestamp: DateTime.now(),
+          imageBase64: imageBase64,
         ))
         ..add(Message(
           id: 'msg_${DateTime.now().millisecondsSinceEpoch}_a',
@@ -74,6 +77,7 @@ class ChatRepositoryImpl implements ChatRepository {
           role: 'user',
           text: message,
           timestamp: DateTime.now(),
+          imageBase64: imageBase64,
         ))
         ..add(Message(
           id: 'msg_${DateTime.now().millisecondsSinceEpoch}_a',
@@ -94,6 +98,7 @@ class ChatRepositoryImpl implements ChatRepository {
     required String message,
     String? companionName,
     String? tone,
+    String? imageBase64,
   }) async* {
     String accumulated = '';
     try {
@@ -103,6 +108,7 @@ class ChatRepositoryImpl implements ChatRepository {
         message: message,
         companionName: companionName,
         tone: tone,
+        imageBase64: imageBase64,
       )) {
         accumulated += token;
         yield token;
@@ -125,6 +131,7 @@ class ChatRepositoryImpl implements ChatRepository {
           role: 'user',
           text: message,
           timestamp: DateTime.now(),
+          imageBase64: imageBase64,
         ))
         ..add(Message(
           id: 'msg_${DateTime.now().millisecondsSinceEpoch}_a',

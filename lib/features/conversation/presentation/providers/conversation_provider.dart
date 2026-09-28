@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/constants.dart';
@@ -87,6 +89,7 @@ class ConversationStateData {
   final String companionName;
   final CompanionTone companionTone;
   final bool isTtsEnabled;
+  final String? pendingImageBase64;
 
   const ConversationStateData({
     this.avatarState = ConversationState.idle,
@@ -102,6 +105,7 @@ class ConversationStateData {
     this.companionName = AppConstants.defaultCompanionName,
     this.companionTone = AppConstants.defaultCompanionTone,
     this.isTtsEnabled = true,
+    this.pendingImageBase64,
   });
 
   ConversationStateData copyWith({
@@ -119,6 +123,8 @@ class ConversationStateData {
     String? companionName,
     CompanionTone? companionTone,
     bool? isTtsEnabled,
+    String? pendingImageBase64,
+    bool clearPendingImage = false,
   }) {
     return ConversationStateData(
       avatarState: avatarState ?? this.avatarState,
@@ -134,6 +140,7 @@ class ConversationStateData {
       companionName: companionName ?? this.companionName,
       companionTone: companionTone ?? this.companionTone,
       isTtsEnabled: isTtsEnabled ?? this.isTtsEnabled,
+      pendingImageBase64: clearPendingImage ? null : (pendingImageBase64 ?? this.pendingImageBase64),
     );
   }
 }
@@ -152,6 +159,7 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
 
   final SpeechToText _stt = SpeechToText();
   final FlutterTts _tts = FlutterTts();
+  final ImagePicker _imagePicker = ImagePicker();
   bool _isSttInitialized = false;
 
   ConversationNotifier({
@@ -227,6 +235,28 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
     );
 
     loadUserConversations();
+  }
+
+  Future<void> pickImage(ImageSource source) async {
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+      if (picked != null) {
+        final bytes = await picked.readAsBytes();
+        final base64Str = base64Encode(bytes);
+        state = state.copyWith(pendingImageBase64: base64Str);
+      }
+    } catch (e) {
+      debugPrint('Error picking image: $e');
+    }
+  }
+
+  void clearPendingImage() {
+    state = state.copyWith(clearPendingImage: true);
   }
 
   Future<void> stopSpeaking() async {
@@ -349,12 +379,15 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
       } catch (_) {}
     }
 
+    final image = state.pendingImageBase64;
+
     // 1. Add user message optimistically and initialize empty assistant message placeholder
     final userMsg = Message(
       id: 'msg_${DateTime.now().millisecondsSinceEpoch}_u',
       role: 'user',
       text: trimmed,
       timestamp: DateTime.now(),
+      imageBase64: image,
     );
 
     final assistantMsgId = 'msg_${DateTime.now().millisecondsSinceEpoch}_a';
@@ -371,6 +404,7 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
       isListening: false,
       avatarState: ConversationState.thinking,
       clearError: true,
+      clearPendingImage: true,
     );
 
     try {
@@ -382,6 +416,7 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
         message: trimmed,
         companionName: state.companionName,
         tone: state.companionTone.value,
+        imageBase64: image,
       )) {
         accumulated += token;
 

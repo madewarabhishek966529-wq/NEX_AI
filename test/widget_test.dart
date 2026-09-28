@@ -23,6 +23,7 @@ class FakeChatRepository implements ChatRepository {
     required String message,
     String? companionName,
     String? tone,
+    String? imageBase64,
   }) async => 'Hello from fake companion';
 
   @override
@@ -38,6 +39,7 @@ class FakeChatRepository implements ChatRepository {
     required String message,
     String? companionName,
     String? tone,
+    String? imageBase64,
   }) async* {
     yield 'Hello from fake companion';
   }

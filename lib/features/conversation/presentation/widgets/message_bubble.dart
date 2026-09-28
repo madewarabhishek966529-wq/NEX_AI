@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -81,6 +82,23 @@ class MessageBubble extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 6),
+            if (message.imageBase64 != null && message.imageBase64!.isNotEmpty) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.memory(
+                  base64Decode(
+                    message.imageBase64!.contains(',')
+                        ? message.imageBase64!.split(',').last
+                        : message.imageBase64!,
+                  ),
+                  height: 160,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ),
+              const SizedBox(height: 6),
+            ],
             if (message.text.isEmpty && !isUser)
               Row(
                 mainAxisSize: MainAxisSize.min,

@@ -15,6 +15,7 @@ abstract class ChatRepository {
     required String message,
     String? companionName,
     String? tone,
+    String? imageBase64,
   });
 
   /// Streams generated speech text response chunk by chunk
@@ -24,6 +25,7 @@ abstract class ChatRepository {
     required String message,
     String? companionName,
     String? tone,
+    String? imageBase64,
   });
 
   /// Retrieves the message history for a given conversation

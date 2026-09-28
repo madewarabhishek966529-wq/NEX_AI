@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../../app/router.dart';
 import '../../../../app/theme.dart';
@@ -317,7 +319,47 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Pending image preview chip
+          if (convState.pendingImageBase64 != null)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceElevated,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.primaryNeon.withValues(alpha: 0.5)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: Image.memory(
+                      base64Decode(convState.pendingImageBase64!),
+                      width: 32,
+                      height: 32,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Vision image attached',
+                    style: TextStyle(fontSize: 12, color: AppTheme.textPrimary, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 16, color: AppTheme.textMuted),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    tooltip: 'Remove Image',
+                    onPressed: () => notifier.clearPendingImage(),
+                  ),
+                ],
+              ),
+            ),
+
           Row(
             children: [
               // Text Input for hybrid typing
@@ -328,6 +370,22 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                   onSubmitted: (_) => _sendMessage(),
                   decoration: InputDecoration(
                     hintText: 'Talk or type to ${convState.companionName}...',
+                    prefixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: const Icon(Icons.camera_alt_outlined, size: 20, color: AppTheme.textSecondary),
+                          tooltip: 'Camera ("See what I see")',
+                          onPressed: () => notifier.pickImage(ImageSource.camera),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.photo_library_outlined, size: 20, color: AppTheme.textSecondary),
+                          tooltip: 'Photo Library',
+                          onPressed: () => notifier.pickImage(ImageSource.gallery),
+                        ),
+                      ],
+                    ),
                     suffixIcon: IconButton(
                       icon: const Icon(Icons.send_rounded, color: AppTheme.primaryNeon, size: 20),
                       onPressed: () => _sendMessage(),

@@ -43,6 +43,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., example="Hey Aura, how's your day?")
     companion_name: Optional[str] = Field(None, example="Aura")
     tone: Optional[str] = Field(None, example="supportive")
+    image_base64: Optional[str] = Field(None, example="data:image/jpeg;base64,...")
 
 class ChatResponse(BaseModel):
     response: str
@@ -64,15 +65,21 @@ class NewConversationResponse(BaseModel):
     conversation_id: str
 
 # ----------------- AI Inference Service -----------------
-def generate_ai_response(system_prompt: str, history: List[Dict[str, str]], user_message: str) -> str:
+def generate_ai_response(
+    system_prompt: str, 
+    history: List[Dict[str, str]], 
+    user_message: str,
+    image_base64: Optional[str] = None
+) -> str:
     """
     Calls Gemini or Groq based on configuration.
-    Falls back gracefully if API keys are not present or encounter rate limits.
+    Supports multimodal image inputs for Gemini.
     """
     # 1. Try Gemini
     if settings.GEMINI_API_KEY:
         try:
             import google.generativeai as genai
+            import base64
             genai.configure(api_key=settings.GEMINI_API_KEY)
             
             # Format history for Gemini
@@ -80,7 +87,19 @@ def generate_ai_response(system_prompt: str, history: List[Dict[str, str]], user
             for h in history:
                 role = "user" if h["role"] == "user" else "model"
                 contents.append({"role": role, "parts": [h["content"]]})
-            contents.append({"role": "user", "parts": [user_message]})
+
+            user_parts = [user_message]
+            if image_base64:
+                raw_b64 = image_base64
+                if "," in raw_b64:
+                    raw_b64 = raw_b64.split(",", 1)[1]
+                try:
+                    img_bytes = base64.b64decode(raw_b64)
+                    user_parts.append({"mime_type": "image/jpeg", "data": img_bytes})
+                except Exception as decode_err:
+                    logger.warning(f"Failed to decode image base64: {decode_err}")
+
+            contents.append({"role": "user", "parts": user_parts})
             
             model = genai.GenerativeModel(
                 model_name=settings.AI_MODEL,
@@ -129,20 +148,39 @@ def generate_ai_response(system_prompt: str, history: List[Dict[str, str]], user
     else:
         return f"I hear you. Tell me more about that, I'm really curious to know what you think."
 
-async def stream_ai_response(system_prompt: str, history: List[Dict[str, str]], user_message: str) -> AsyncGenerator[str, None]:
+async def stream_ai_response(
+    system_prompt: str, 
+    history: List[Dict[str, str]], 
+    user_message: str,
+    image_base64: Optional[str] = None
+) -> AsyncGenerator[str, None]:
     """
     Streams AI tokens asynchronously from Gemini, Groq, or fallback generator.
+    Supports multimodal image inputs.
     """
     # 1. Try Gemini streaming
     if settings.GEMINI_API_KEY:
         try:
             import google.generativeai as genai
+            import base64
             genai.configure(api_key=settings.GEMINI_API_KEY)
             contents = []
             for h in history:
                 role = "user" if h["role"] == "user" else "model"
                 contents.append({"role": role, "parts": [h["content"]]})
-            contents.append({"role": "user", "parts": [user_message]})
+
+            user_parts = [user_message]
+            if image_base64:
+                raw_b64 = image_base64
+                if "," in raw_b64:
+                    raw_b64 = raw_b64.split(",", 1)[1]
+                try:
+                    img_bytes = base64.b64decode(raw_b64)
+                    user_parts.append({"mime_type": "image/jpeg", "data": img_bytes})
+                except Exception as decode_err:
+                    logger.warning(f"Failed to decode image base64 in stream: {decode_err}")
+
+            contents.append({"role": "user", "parts": user_parts})
 
             model = genai.GenerativeModel(
                 model_name=settings.AI_MODEL,
@@ -235,7 +273,12 @@ async def chat(req: ChatRequest):
     )
 
     # 2. Generate response
-    ai_text = generate_ai_response(system_prompt, history, req.message)
+    ai_text = generate_ai_response(
+        system_prompt, 
+        history, 
+        req.message,
+        image_base64=req.image_base64
+    )
 
     # 3. Save both user message and assistant response
     db.add_message(req.conversation_id, "user", req.message)
@@ -277,7 +320,12 @@ async def chat_stream(req: ChatRequest):
 
     async def event_generator():
         collected_chunks = []
-        async for chunk in stream_ai_response(system_prompt, history, req.message):
+        async for chunk in stream_ai_response(
+            system_prompt, 
+            history, 
+            req.message,
+            image_base64=req.image_base64
+        ):
             collected_chunks.append(chunk)
             payload = json.dumps({"token": chunk, "done": False})
             yield f"data: {payload}\n\n"
