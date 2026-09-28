@@ -222,7 +222,22 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
     loadUserConversations();
   }
 
+  Future<void> stopSpeaking() async {
+    try {
+      await _tts.stop();
+    } catch (_) {}
+    state = state.copyWith(
+      isSpeaking: false,
+      avatarState: ConversationState.idle,
+    );
+  }
+
   Future<void> toggleListening() async {
+    if (state.isSpeaking) {
+      await stopSpeaking();
+      await startListening();
+      return;
+    }
     if (state.isListening) {
       await stopListening();
     } else {
@@ -319,6 +334,13 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
     final userId = state.userId;
 
     if (convId == null || userId == null) return;
+
+    // Interrupt any ongoing speech
+    if (state.isSpeaking) {
+      try {
+        await _tts.stop();
+      } catch (_) {}
+    }
 
     // 1. Add user message optimistically
     final userMsg = Message(

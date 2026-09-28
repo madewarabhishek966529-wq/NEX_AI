@@ -174,9 +174,15 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
         AvatarWidget(
           state: convState.avatarState,
           size: 260,
-          onTap: () => notifier.triggerReaction(),
+          onTap: () {
+            if (convState.isSpeaking) {
+              notifier.stopSpeaking();
+            } else {
+              notifier.triggerReaction();
+            }
+          },
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 20),
 
         // Live Audio Equalizer Waveform
         AudioVisualizer(
@@ -184,6 +190,26 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
           barCount: 20,
           height: 32,
         ),
+        const SizedBox(height: 12),
+
+        // Interrupt Speech Pill
+        if (convState.isSpeaking)
+          TextButton.icon(
+            onPressed: () => notifier.stopSpeaking(),
+            icon: const Icon(Icons.stop_circle_rounded, color: Color(0xFFEF4444), size: 16),
+            label: const Text(
+              'Tap to interrupt speech',
+              style: TextStyle(color: Color(0xFFEF4444), fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+            style: TextButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444).withValues(alpha: 0.12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            ),
+          )
+        else
+          const SizedBox(height: 32),
+
         const Spacer(),
       ],
     );
