@@ -42,6 +42,53 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _autoSpeak = convState.isTtsEnabled;
     _speechRate = prefs.getDouble(AppConstants.keyTtsRate) ?? AppConstants.defaultTtsRate;
     _speechPitch = prefs.getDouble(AppConstants.keyTtsPitch) ?? AppConstants.defaultTtsPitch;
+
+    _loadMemories();
+  }
+
+  List<Map<String, dynamic>> _memories = [];
+  bool _isLoadingMemories = false;
+
+  Future<void> _loadMemories() async {
+    final userId = ref.read(conversationProvider).userId;
+    if (userId == null) return;
+    setState(() => _isLoadingMemories = true);
+    try {
+      final dio = ref.read(dioClientProvider).dio;
+      final response = await dio.get('/memories/$userId');
+      if (response.data is Map && response.data['memories'] is List) {
+        final list = (response.data['memories'] as List)
+            .map((item) => Map<String, dynamic>.from(item as Map))
+            .toList();
+        setState(() => _memories = list);
+      }
+    } catch (_) {
+      // offline or server not ready
+    } finally {
+      if (mounted) setState(() => _isLoadingMemories = false);
+    }
+  }
+
+  Future<void> _deleteMemory(String memoryId) async {
+    try {
+      final dio = ref.read(dioClientProvider).dio;
+      await dio.delete('/memories/$memoryId');
+      _loadMemories();
+    } catch (_) {}
+  }
+
+  Future<void> _addMemory(String key, String value) async {
+    final userId = ref.read(conversationProvider).userId;
+    if (userId == null || key.trim().isEmpty || value.trim().isEmpty) return;
+    try {
+      final dio = ref.read(dioClientProvider).dio;
+      await dio.post('/memories', data: {
+        'user_id': userId,
+        'key': key.trim(),
+        'value': value.trim(),
+      });
+      _loadMemories();
+    } catch (_) {}
   }
 
   @override
@@ -119,6 +166,53 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         });
       }
     }
+  }
+
+  void _showAddMemoryDialog() {
+    final keyController = TextEditingController();
+    final valueController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceElevated,
+        title: const Text('Add Memory Fact', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: keyController,
+              decoration: const InputDecoration(
+                labelText: 'Fact Category / Topic',
+                hintText: 'e.g. Occupation, Hobbies, Location',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: valueController,
+              decoration: const InputDecoration(
+                labelText: 'Fact Detail',
+                hintText: 'e.g. Senior Flutter Developer',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel', style: TextStyle(color: AppTheme.textMuted)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _addMemory(keyController.text, valueController.text);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryNeon),
+            child: const Text('Save Fact'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _playVoiceSample() async {
@@ -294,6 +388,77 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 foregroundColor: AppTheme.accentCyan,
                 side: const BorderSide(color: AppTheme.accentCyan),
               ),
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Section: Personal Memory Vault
+          _buildSectionHeader('PERSONAL MEMORY VAULT (CROSS-SESSION)', Icons.psychology_rounded),
+          const SizedBox(height: 8),
+          const Text(
+            'Facts your companion permanently remembers across all past and future sessions.',
+            style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+          ),
+          const SizedBox(height: 12),
+          if (_isLoadingMemories)
+            const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryNeon)))
+          else if (_memories.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.surfaceBorder),
+              ),
+              child: const Text(
+                'No personal facts saved yet. Add your name, job, or hobbies so your companion always remembers!',
+                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              ),
+            )
+          else
+            ..._memories.map((mem) => Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.surfaceBorder),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.bookmark_added_rounded, color: AppTheme.accentCyan, size: 18),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              mem['key']?.toString() ?? '',
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primaryNeon),
+                            ),
+                            Text(
+                              mem['value']?.toString() ?? '',
+                              style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 16, color: AppTheme.textMuted),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () => _deleteMemory(mem['memory_id']?.toString() ?? ''),
+                      ),
+                    ],
+                  ),
+                )),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _showAddMemoryDialog,
+              icon: const Icon(Icons.add_rounded, size: 16, color: AppTheme.primaryNeon),
+              label: const Text('Add Personal Fact', style: TextStyle(color: AppTheme.primaryNeon, fontSize: 13, fontWeight: FontWeight.w600)),
             ),
           ),
           const SizedBox(height: 24),

@@ -64,6 +64,11 @@ class NewConversationRequest(BaseModel):
 class NewConversationResponse(BaseModel):
     conversation_id: str
 
+class AddMemoryRequest(BaseModel):
+    user_id: str = Field(..., example="user_123")
+    key: str = Field(..., example="Occupation")
+    value: str = Field(..., example="Software Engineer")
+
 # ----------------- AI Inference Service -----------------
 def generate_ai_response(
     system_prompt: str, 
@@ -269,7 +274,8 @@ async def chat(req: ChatRequest):
     system_prompt, history = memory_manager.get_context_for_prompt(
         conversation_id=req.conversation_id,
         companion_name=name,
-        tone=tone
+        tone=tone,
+        user_id=req.user_id
     )
 
     # 2. Generate response
@@ -315,7 +321,8 @@ async def chat_stream(req: ChatRequest):
     system_prompt, history = memory_manager.get_context_for_prompt(
         conversation_id=req.conversation_id,
         companion_name=name,
-        tone=tone
+        tone=tone,
+        user_id=req.user_id
     )
 
     async def event_generator():
@@ -369,6 +376,23 @@ async def delete_conversation(conversation_id: str):
 async def list_conversations(user_id: str):
     convs = db.get_user_conversations(user_id)
     return {"conversations": convs}
+
+@app.get("/memories/{user_id}", tags=["Memory"])
+async def list_memories(user_id: str):
+    memories = db.get_user_memories(user_id)
+    return {"memories": memories}
+
+@app.post("/memories", tags=["Memory"])
+async def add_memory(req: AddMemoryRequest):
+    mem_id = db.add_user_memory(req.user_id, req.key, req.value)
+    return {"status": "created", "memory_id": mem_id}
+
+@app.delete("/memories/{memory_id}", tags=["Memory"])
+async def delete_memory(memory_id: str):
+    success = db.delete_user_memory(memory_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return {"status": "deleted", "memory_id": memory_id}
 
 if __name__ == "__main__":
     import uvicorn

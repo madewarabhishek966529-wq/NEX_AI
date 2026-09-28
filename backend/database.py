@@ -44,6 +44,19 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_messages_conv 
                 ON messages(conversation_id, timestamp)
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_memories (
+                    memory_id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    key TEXT NOT NULL,
+                    value TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_memories_user 
+                ON user_memories(user_id)
+            """)
             conn.commit()
 
     def create_conversation(self, user_id: str, title: Optional[str] = None) -> str:
@@ -143,5 +156,34 @@ class Database:
             )
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
+
+    def add_user_memory(self, user_id: str, key: str, value: str) -> str:
+        mem_id = f"mem_{uuid.uuid4().hex[:12]}"
+        now = datetime.now(timezone.utc).isoformat()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO user_memories (memory_id, user_id, key, value, created_at) VALUES (?, ?, ?, ?, ?)",
+                (mem_id, user_id, key, value, now)
+            )
+            conn.commit()
+        return mem_id
+
+    def get_user_memories(self, user_id: str) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT memory_id, user_id, key, value, created_at FROM user_memories WHERE user_id = ? ORDER BY created_at DESC",
+                (user_id,)
+            )
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    def delete_user_memory(self, memory_id: str) -> bool:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM user_memories WHERE memory_id = ?", (memory_id,))
+            conn.commit()
+            return cursor.rowcount > 0
 
 db = Database()

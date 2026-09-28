@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 try:
     from backend.config import settings, get_system_prompt
     from backend.database import db
@@ -14,13 +14,21 @@ class MemoryManager:
         self, 
         conversation_id: str, 
         companion_name: str = settings.COMPANION_NAME,
-        tone: str = settings.COMPANION_TONE
+        tone: str = settings.COMPANION_TONE,
+        user_id: Optional[str] = None
     ) -> Tuple[str, List[Dict[str, str]]]:
         """
         Builds the system prompt and conversation history list.
-        Prepend rolling summary if available.
+        Prepends user profile memories and rolling summary if available.
         """
         base_prompt = get_system_prompt(companion_name, tone)
+
+        # Inject persistent user memories
+        if user_id:
+            user_facts = db.get_user_memories(user_id)
+            if user_facts:
+                facts_str = "\n".join([f"- {f['key']}: {f['value']}" for f in user_facts])
+                base_prompt += f"\n\nPermanent Known Facts About This User (Always remember):\n{facts_str}\n"
         
         # Check if a rolling summary exists
         summary = db.get_conversation_summary(conversation_id)
