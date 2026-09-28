@@ -10,6 +10,7 @@ import '../widgets/mic_button.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/audio_visualizer.dart';
 import '../widgets/state_badge.dart';
+import '../widgets/conversation_drawer.dart';
 
 class ConversationScreen extends ConsumerStatefulWidget {
   const ConversationScreen({super.key});
@@ -85,7 +86,15 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.background,
+      drawer: const ConversationDrawer(),
       appBar: AppBar(
+        leading: Builder(
+          builder: (context) => IconButton(
+            tooltip: 'Conversation Sessions',
+            icon: const Icon(Icons.history_rounded, color: AppTheme.textPrimary),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [

@@ -27,6 +27,9 @@ class FakeChatRepository implements ChatRepository {
 
   @override
   Future<String> startNewConversation({required String userId, String? title}) async => 'conv_test_123';
+
+  @override
+  Future<bool> deleteConversation(String conversationId) async => true;
 }
 
 void main() {

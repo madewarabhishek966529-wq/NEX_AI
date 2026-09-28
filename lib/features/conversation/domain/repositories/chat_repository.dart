@@ -22,4 +22,7 @@ abstract class ChatRepository {
 
   /// Retrieves all conversation sessions belonging to the user
   Future<List<Conversation>> getUserConversations(String userId);
+
+  /// Deletes a conversation session
+  Future<bool> deleteConversation(String conversationId);
 }

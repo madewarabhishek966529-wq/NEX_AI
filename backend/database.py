@@ -126,6 +126,14 @@ class Database:
             cursor.execute("UPDATE conversations SET summary = ? WHERE conversation_id = ?", (summary, conversation_id))
             conn.commit()
 
+    def delete_conversation(self, conversation_id: str) -> bool:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM messages WHERE conversation_id = ?", (conversation_id,))
+            cursor.execute("DELETE FROM conversations WHERE conversation_id = ?", (conversation_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
     def get_user_conversations(self, user_id: str) -> List[Dict[str, Any]]:
         with self._get_connection() as conn:
             cursor = conn.cursor()

@@ -14,6 +14,7 @@ abstract class ChatRemoteDataSource {
   });
   Future<List<Message>> getHistory(String conversationId);
   Future<List<Conversation>> getUserConversations(String userId);
+  Future<bool> deleteConversation(String conversationId);
 }
 
 class ChatRemoteDataSourceImpl implements ChatRemoteDataSource {
@@ -97,6 +98,16 @@ class ChatRemoteDataSourceImpl implements ChatRemoteDataSource {
         }).toList();
       }
       return [];
+    } on DioException catch (e) {
+      throw dioClient.handleError(e);
+    }
+  }
+
+  @override
+  Future<bool> deleteConversation(String conversationId) async {
+    try {
+      final response = await dioClient.dio.delete('/conversation/$conversationId');
+      return response.statusCode == 200;
     } on DioException catch (e) {
       throw dioClient.handleError(e);
     }

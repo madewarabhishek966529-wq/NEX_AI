@@ -196,6 +196,13 @@ async def chat(req: ChatRequest):
         conversation_id=req.conversation_id
     )
 
+@app.delete("/conversation/{conversation_id}", tags=["Conversation"])
+async def delete_conversation(conversation_id: str):
+    success = db.delete_conversation(conversation_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"status": "deleted", "conversation_id": conversation_id}
+
 @app.get("/conversations/{user_id}", tags=["Conversation"])
 async def list_conversations(user_id: str):
     convs = db.get_user_conversations(user_id)

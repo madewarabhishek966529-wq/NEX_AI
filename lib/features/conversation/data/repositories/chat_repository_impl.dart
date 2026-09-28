@@ -124,6 +124,20 @@ class ChatRepositoryImpl implements ChatRepository {
     }
   }
 
+  @override
+  Future<bool> deleteConversation(String conversationId) async {
+    await localDataSource.clearCache(conversationId);
+    final activeId = await localDataSource.getActiveConversationId();
+    if (activeId == conversationId) {
+      await localDataSource.saveActiveConversationId('');
+    }
+    try {
+      return await remoteDataSource.deleteConversation(conversationId);
+    } catch (_) {
+      return true;
+    }
+  }
+
   String _generateOfflineFallback(String input, String companionName) {
     final lower = input.toLowerCase().trim();
     if (lower.contains('hello') || lower.contains('hi') || lower.contains('hey')) {

@@ -7,10 +7,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/constants.dart';
 import '../../../../core/network/dio_client.dart';
 import '../../domain/entities/message.dart';
+import '../../domain/entities/conversation.dart';
 import '../../domain/repositories/chat_repository.dart';
 import '../../domain/usecases/send_message.dart';
 import '../../domain/usecases/get_history.dart';
 import '../../domain/usecases/start_new_conversation.dart';
+import '../../domain/usecases/get_user_conversations.dart';
+import '../../domain/usecases/delete_conversation.dart';
 import '../../data/datasources/chat_remote_datasource.dart';
 import '../../data/datasources/chat_local_datasource.dart';
 import '../../data/repositories/chat_repository_impl.dart';
@@ -55,11 +58,21 @@ final startNewConversationUseCaseProvider = Provider<StartNewConversationUseCase
   return StartNewConversationUseCase(ref.watch(chatRepositoryProvider));
 });
 
+final getUserConversationsUseCaseProvider = Provider<GetUserConversationsUseCase>((ref) {
+  return GetUserConversationsUseCase(ref.watch(chatRepositoryProvider));
+});
+
+final deleteConversationUseCaseProvider = Provider<DeleteConversationUseCase>((ref) {
+  return DeleteConversationUseCase(ref.watch(chatRepositoryProvider));
+});
+
 // ----------------- State Model -----------------
 
 class ConversationStateData {
   final ConversationState avatarState;
   final List<Message> messages;
+  final List<Conversation> conversations;
+  final bool isLoadingConversations;
   final String? conversationId;
   final String? userId;
   final String currentTranscript;
@@ -73,6 +86,8 @@ class ConversationStateData {
   const ConversationStateData({
     this.avatarState = ConversationState.idle,
     this.messages = const [],
+    this.conversations = const [],
+    this.isLoadingConversations = false,
     this.conversationId,
     this.userId,
     this.currentTranscript = '',
@@ -87,6 +102,8 @@ class ConversationStateData {
   ConversationStateData copyWith({
     ConversationState? avatarState,
     List<Message>? messages,
+    List<Conversation>? conversations,
+    bool? isLoadingConversations,
     String? conversationId,
     String? userId,
     String? currentTranscript,
@@ -101,6 +118,8 @@ class ConversationStateData {
     return ConversationStateData(
       avatarState: avatarState ?? this.avatarState,
       messages: messages ?? this.messages,
+      conversations: conversations ?? this.conversations,
+      isLoadingConversations: isLoadingConversations ?? this.isLoadingConversations,
       conversationId: conversationId ?? this.conversationId,
       userId: userId ?? this.userId,
       currentTranscript: currentTranscript ?? this.currentTranscript,
@@ -120,6 +139,8 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
   final SendMessageUseCase sendMessageUseCase;
   final GetHistoryUseCase getHistoryUseCase;
   final StartNewConversationUseCase startNewConversationUseCase;
+  final GetUserConversationsUseCase getUserConversationsUseCase;
+  final DeleteConversationUseCase deleteConversationUseCase;
   final ChatLocalDataSource localDataSource;
   final SharedPreferences prefs;
 
@@ -131,6 +152,8 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
     required this.sendMessageUseCase,
     required this.getHistoryUseCase,
     required this.startNewConversationUseCase,
+    required this.getUserConversationsUseCase,
+    required this.deleteConversationUseCase,
     required this.localDataSource,
     required this.prefs,
   }) : super(const ConversationStateData()) {
@@ -179,7 +202,7 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
     final autoSpeak = prefs.getBool(AppConstants.keyAutoSpeak) ?? true;
 
     var convId = await localDataSource.getActiveConversationId();
-    if (convId == null) {
+    if (convId == null || convId.isEmpty) {
       convId = await startNewConversationUseCase.execute(userId: userId);
       await localDataSource.saveActiveConversationId(convId);
     }
@@ -195,6 +218,8 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
       messages: history,
       avatarState: ConversationState.idle,
     );
+
+    loadUserConversations();
   }
 
   Future<void> toggleListening() async {
@@ -334,6 +359,9 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
         avatarState: ConversationState.speaking,
       );
 
+      // Refresh list to show updated snippets
+      loadUserConversations();
+
       // 4. Voice output (TTS)
       if (state.isTtsEnabled) {
         await _tts.stop();
@@ -348,6 +376,46 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
         avatarState: ConversationState.idle,
         errorMessage: e.toString(),
       );
+    }
+  }
+
+  Future<void> loadUserConversations() async {
+    final userId = state.userId;
+    if (userId == null) return;
+    state = state.copyWith(isLoadingConversations: true);
+    try {
+      final list = await getUserConversationsUseCase.execute(userId);
+      state = state.copyWith(conversations: list, isLoadingConversations: false);
+    } catch (_) {
+      state = state.copyWith(isLoadingConversations: false);
+    }
+  }
+
+  Future<void> switchConversation(String conversationId) async {
+    if (state.conversationId == conversationId) return;
+    await _tts.stop();
+    state = state.copyWith(
+      conversationId: conversationId,
+      messages: [],
+      avatarState: ConversationState.thinking,
+      isSpeaking: false,
+      isListening: false,
+    );
+    await localDataSource.saveActiveConversationId(conversationId);
+    final history = await getHistoryUseCase.execute(conversationId);
+    state = state.copyWith(
+      messages: history,
+      avatarState: ConversationState.idle,
+    );
+    loadUserConversations();
+  }
+
+  Future<void> deleteConversation(String conversationId) async {
+    await deleteConversationUseCase.execute(conversationId);
+    if (state.conversationId == conversationId) {
+      await startFreshConversation();
+    } else {
+      await loadUserConversations();
     }
   }
 
@@ -371,6 +439,8 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
       avatarState: ConversationState.idle,
       currentTranscript: '',
     );
+
+    loadUserConversations();
   }
 
   void triggerReaction() {
@@ -413,6 +483,8 @@ final conversationProvider = StateNotifierProvider<ConversationNotifier, Convers
     sendMessageUseCase: ref.watch(sendMessageUseCaseProvider),
     getHistoryUseCase: ref.watch(getHistoryUseCaseProvider),
     startNewConversationUseCase: ref.watch(startNewConversationUseCaseProvider),
+    getUserConversationsUseCase: ref.watch(getUserConversationsUseCaseProvider),
+    deleteConversationUseCase: ref.watch(deleteConversationUseCaseProvider),
     localDataSource: ref.watch(chatLocalDataSourceProvider),
     prefs: ref.watch(sharedPreferencesProvider),
   );
