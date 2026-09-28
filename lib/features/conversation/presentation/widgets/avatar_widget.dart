@@ -7,12 +7,14 @@ class AvatarWidget extends StatefulWidget {
   final ConversationState state;
   final VoidCallback? onTap;
   final double size;
+  final AuraTheme auraTheme;
 
   const AvatarWidget({
     super.key,
     required this.state,
     this.onTap,
     this.size = 260,
+    this.auraTheme = AuraTheme.cyberCyan,
   });
 
   @override
@@ -74,7 +76,7 @@ class _AvatarWidgetState extends State<AvatarWidget> with TickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
-    final stateColor = AppTheme.stateColor(widget.state);
+    final stateColor = AppTheme.stateColor(widget.state, widget.auraTheme);
 
     return GestureDetector(
       onTap: widget.onTap,

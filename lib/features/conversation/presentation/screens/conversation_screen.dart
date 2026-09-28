@@ -175,6 +175,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
         // Animated Reactive Avatar
         AvatarWidget(
           state: convState.avatarState,
+          auraTheme: convState.auraTheme,
           size: 260,
           onTap: () {
             if (convState.isSpeaking) {

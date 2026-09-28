@@ -90,6 +90,7 @@ class ConversationStateData {
   final CompanionTone companionTone;
   final bool isTtsEnabled;
   final String? pendingImageBase64;
+  final AuraTheme auraTheme;
 
   const ConversationStateData({
     this.avatarState = ConversationState.idle,
@@ -106,6 +107,7 @@ class ConversationStateData {
     this.companionTone = AppConstants.defaultCompanionTone,
     this.isTtsEnabled = true,
     this.pendingImageBase64,
+    this.auraTheme = AuraTheme.cyberCyan,
   });
 
   ConversationStateData copyWith({
@@ -125,6 +127,7 @@ class ConversationStateData {
     bool? isTtsEnabled,
     String? pendingImageBase64,
     bool clearPendingImage = false,
+    AuraTheme? auraTheme,
   }) {
     return ConversationStateData(
       avatarState: avatarState ?? this.avatarState,
@@ -141,6 +144,7 @@ class ConversationStateData {
       companionTone: companionTone ?? this.companionTone,
       isTtsEnabled: isTtsEnabled ?? this.isTtsEnabled,
       pendingImageBase64: clearPendingImage ? null : (pendingImageBase64 ?? this.pendingImageBase64),
+      auraTheme: auraTheme ?? this.auraTheme,
     );
   }
 }
@@ -215,6 +219,11 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
     final toneStr = prefs.getString(AppConstants.keyCompanionTone) ?? AppConstants.defaultCompanionTone.value;
     final tone = CompanionToneX.fromString(toneStr);
     final autoSpeak = prefs.getBool(AppConstants.keyAutoSpeak) ?? true;
+    final auraName = prefs.getString(AppConstants.keyAuraTheme);
+    final auraTheme = AuraTheme.values.firstWhere(
+      (e) => e.name == auraName,
+      orElse: () => AuraTheme.cyberCyan,
+    );
 
     var convId = await localDataSource.getActiveConversationId();
     if (convId == null || convId.isEmpty) {
@@ -232,9 +241,15 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
       isTtsEnabled: autoSpeak,
       messages: history,
       avatarState: ConversationState.idle,
+      auraTheme: auraTheme,
     );
 
     loadUserConversations();
+  }
+
+  void updateAuraTheme(AuraTheme theme) {
+    prefs.setString(AppConstants.keyAuraTheme, theme.name);
+    state = state.copyWith(auraTheme: theme);
   }
 
   Future<void> pickImage(ImageSource source) async {

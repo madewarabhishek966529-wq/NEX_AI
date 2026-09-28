@@ -24,10 +24,11 @@ class AppTheme {
   static const Color textMuted = Color(0xFF64748B);
 
   // Dynamic state colors
-  static Color stateColor(ConversationState state) {
+  static Color stateColor(ConversationState state, [AuraTheme aura = AuraTheme.cyberCyan]) {
+    final customPrimary = Color(aura.colorValue);
     switch (state) {
       case ConversationState.idle:
-        return primaryNeon;
+        return customPrimary;
       case ConversationState.listening:
         return accentGreen;
       case ConversationState.thinking:

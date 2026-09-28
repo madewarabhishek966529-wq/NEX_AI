@@ -9,6 +9,78 @@ enum ConversationState {
   reacting,
 }
 
+/// Customizable Aura Theme Colors for the Holographic Avatar
+enum AuraTheme {
+  cyberCyan,
+  royalViolet,
+  solarAmber,
+  matrixGreen,
+  hotMagenta,
+}
+
+extension AuraThemeX on AuraTheme {
+  String get value {
+    switch (this) {
+      case AuraTheme.cyberCyan:
+        return 'cyber_cyan';
+      case AuraTheme.royalViolet:
+        return 'royal_violet';
+      case AuraTheme.solarAmber:
+        return 'solar_amber';
+      case AuraTheme.matrixGreen:
+        return 'matrix_green';
+      case AuraTheme.hotMagenta:
+        return 'hot_magenta';
+    }
+  }
+
+  String get displayName {
+    switch (this) {
+      case AuraTheme.cyberCyan:
+        return 'Cyber Cyan';
+      case AuraTheme.royalViolet:
+        return 'Royal Violet';
+      case AuraTheme.solarAmber:
+        return 'Solar Amber';
+      case AuraTheme.matrixGreen:
+        return 'Matrix Green';
+      case AuraTheme.hotMagenta:
+        return 'Hot Magenta';
+    }
+  }
+
+  int get colorValue {
+    switch (this) {
+      case AuraTheme.cyberCyan:
+        return 0xFF00F0FF;
+      case AuraTheme.royalViolet:
+        return 0xFF9D4EDD;
+      case AuraTheme.solarAmber:
+        return 0xFFFFAB00;
+      case AuraTheme.matrixGreen:
+        return 0xFF00E676;
+      case AuraTheme.hotMagenta:
+        return 0xFFFF007F;
+    }
+  }
+
+  static AuraTheme fromString(String val) {
+    switch (val.toLowerCase()) {
+      case 'royal_violet':
+        return AuraTheme.royalViolet;
+      case 'solar_amber':
+        return AuraTheme.solarAmber;
+      case 'matrix_green':
+        return AuraTheme.matrixGreen;
+      case 'hot_magenta':
+        return AuraTheme.hotMagenta;
+      case 'cyber_cyan':
+      default:
+        return AuraTheme.cyberCyan;
+    }
+  }
+}
+
 /// Personality tones for the AI companion
 enum CompanionTone {
   supportive,
@@ -102,10 +174,12 @@ class AppConstants {
   static const String keyTtsRate = 'nex_ai_tts_rate';
   static const String keyTtsPitch = 'nex_ai_tts_pitch';
   static const String keyAutoSpeak = 'nex_ai_auto_speak';
+  static const String keyAuraTheme = 'nex_ai_aura_theme';
 
   // Default Companion Settings
   static const String defaultCompanionName = 'Aura';
   static const CompanionTone defaultCompanionTone = CompanionTone.supportive;
+  static const AuraTheme defaultAuraTheme = AuraTheme.cyberCyan;
   static const double defaultTtsRate = 0.5;
   static const double defaultTtsPitch = 1.0;
 }

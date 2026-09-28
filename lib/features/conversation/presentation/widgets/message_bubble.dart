@@ -94,7 +94,7 @@ class MessageBubble extends StatelessWidget {
                   height: 160,
                   width: double.infinity,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
                 ),
               ),
               const SizedBox(height: 6),

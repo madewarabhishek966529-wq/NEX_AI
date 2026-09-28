@@ -17,6 +17,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late TextEditingController _nameController;
   late TextEditingController _urlController;
   late CompanionTone _selectedTone;
+  late AuraTheme _selectedAura;
   late bool _autoSpeak;
   late double _speechRate;
   late double _speechPitch;
@@ -39,6 +40,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
 
     _selectedTone = convState.companionTone;
+    _selectedAura = convState.auraTheme;
     _autoSpeak = convState.isTtsEnabled;
     _speechRate = prefs.getDouble(AppConstants.keyTtsRate) ?? AppConstants.defaultTtsRate;
     _speechPitch = prefs.getDouble(AppConstants.keyTtsPitch) ?? AppConstants.defaultTtsPitch;
@@ -120,6 +122,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       tone: _selectedTone,
       ttsEnabled: _autoSpeak,
     );
+    ref.read(conversationProvider.notifier).updateAuraTheme(_selectedAura);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -314,6 +317,92 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             );
           }),
+          const SizedBox(height: 24),
+
+          // Section: Holographic Avatar Aura
+          _buildSectionHeader('HOLOGRAPHIC AVATAR AURA', Icons.auto_awesome_rounded),
+          const SizedBox(height: 8),
+          const Text(
+            'Customize the celestial neon aura energy radiated by your holographic companion.',
+            style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 98,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: AuraTheme.values.length,
+              separatorBuilder: (context, index) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final aura = AuraTheme.values[index];
+                final auraColor = Color(aura.colorValue);
+                final isSelected = _selectedAura == aura;
+                return GestureDetector(
+                  onTap: () {
+                    setState(() => _selectedAura = aura);
+                    ref.read(conversationProvider.notifier).updateAuraTheme(aura);
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 86,
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: isSelected ? auraColor.withValues(alpha: 0.18) : AppTheme.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isSelected ? auraColor : AppTheme.surfaceBorder,
+                        width: isSelected ? 2.0 : 1.0,
+                      ),
+                      boxShadow: isSelected
+                          ? [
+                              BoxShadow(
+                                color: auraColor.withValues(alpha: 0.35),
+                                blurRadius: 10,
+                                spreadRadius: 1,
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: auraColor,
+                            boxShadow: [
+                              BoxShadow(
+                                color: auraColor.withValues(alpha: 0.6),
+                                blurRadius: 8,
+                                spreadRadius: 1,
+                              ),
+                            ],
+                          ),
+                          child: isSelected
+                              ? const Icon(Icons.check_rounded, size: 18, color: Colors.black)
+                              : null,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          aura.displayName,
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                            color: isSelected ? Colors.white : AppTheme.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
           const SizedBox(height: 24),
 
           // Section: Voice & Speech (TTS)
