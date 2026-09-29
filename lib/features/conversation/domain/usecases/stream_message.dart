@@ -11,6 +11,7 @@ class StreamMessageUseCase {
     required String message,
     String? companionName,
     String? tone,
+    String? language,
     String? imageBase64,
   }) {
     return repository.streamMessage(
@@ -19,6 +20,7 @@ class StreamMessageUseCase {
       message: message,
       companionName: companionName,
       tone: tone,
+      language: language,
       imageBase64: imageBase64,
     );
   }

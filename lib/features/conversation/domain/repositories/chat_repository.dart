@@ -15,6 +15,7 @@ abstract class ChatRepository {
     required String message,
     String? companionName,
     String? tone,
+    String? language,
     String? imageBase64,
   });
 
@@ -25,6 +26,7 @@ abstract class ChatRepository {
     required String message,
     String? companionName,
     String? tone,
+    String? language,
     String? imageBase64,
   });
 

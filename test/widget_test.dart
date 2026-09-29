@@ -23,6 +23,7 @@ class FakeChatRepository implements ChatRepository {
     required String message,
     String? companionName,
     String? tone,
+    String? language,
     String? imageBase64,
   }) async => 'Hello from fake companion';
 
@@ -39,6 +40,7 @@ class FakeChatRepository implements ChatRepository {
     required String message,
     String? companionName,
     String? tone,
+    String? language,
     String? imageBase64,
   }) async* {
     yield 'Hello from fake companion';

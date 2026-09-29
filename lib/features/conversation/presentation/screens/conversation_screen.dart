@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../../app/router.dart';
 import '../../../../app/theme.dart';
+import '../../../../core/constants.dart';
 import '../providers/conversation_provider.dart';
 import '../widgets/avatar_widget.dart';
 import '../widgets/mic_button.dart';
@@ -66,10 +67,21 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     final convState = ref.watch(conversationProvider);
     final notifier = ref.read(conversationProvider.notifier);
 
-    // Auto-scroll on new messages
+    // Auto-scroll on new messages and live speech transcription into textfield
     ref.listen<ConversationStateData>(conversationProvider, (prev, next) {
       if (prev?.messages.length != next.messages.length) {
         Future.delayed(const Duration(milliseconds: 150), _scrollToBottom);
+      }
+      // When user speaks to mic, automatically enter live text to textfield!
+      if (next.isListening && next.currentTranscript.isNotEmpty && next.currentTranscript != _textController.text) {
+        _textController.text = next.currentTranscript;
+        _textController.selection = TextSelection.fromPosition(
+          TextPosition(offset: _textController.text.length),
+        );
+      }
+      // When speech finalizes and is submitted, clear the text field
+      if (prev?.isListening == true && !next.isListening && next.currentTranscript.isEmpty && _textController.text.isNotEmpty) {
+        _textController.clear();
       }
       if (next.errorMessage != null && next.errorMessage != prev?.errorMessage) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -128,6 +140,34 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
           ],
         ),
         actions: [
+          // Language Switcher Chip in AppBar
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () => _showLanguageSelector(context, convState.selectedLanguage, notifier),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceElevated,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppTheme.primaryNeon.withValues(alpha: 0.4)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(convState.selectedLanguage.flag, style: const TextStyle(fontSize: 13)),
+                    const SizedBox(width: 4),
+                    Text(
+                      convState.selectedLanguage.nativeName,
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                    ),
+                    const Icon(Icons.arrow_drop_down, size: 14, color: AppTheme.textSecondary),
+                  ],
+                ),
+              ),
+            ),
+          ),
           IconButton(
             tooltip: 'New Conversation',
             icon: const Icon(Icons.add_comment_outlined),
@@ -373,6 +413,55 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
               ),
             ),
 
+          // Active Listening Banner: Confirms microphone is actively listening and shows language
+          if (convState.isListening)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEF4444).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.5)),
+              ),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFEF4444)),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Listening in ${convState.selectedLanguage.displayName}... (Words type into textfield below)',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFEF4444),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () => _showLanguageSelector(context, convState.selectedLanguage, notifier),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Text(
+                        'Change Lang',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppTheme.accentCyan,
+                          fontWeight: FontWeight.bold,
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
           Row(
             children: [
               // Text Input for hybrid typing
@@ -382,7 +471,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                   textInputAction: TextInputAction.send,
                   onSubmitted: (_) => _sendMessage(),
                   decoration: InputDecoration(
-                    hintText: 'Talk or type to ${convState.companionName}...',
+                    hintText: convState.isListening
+                        ? 'Listening to your voice...'
+                        : 'Talk or type to ${convState.companionName} (${convState.selectedLanguage.nativeName})...',
                     prefixIcon: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -417,6 +508,188 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  void _showLanguageSelector(BuildContext context, AppLanguage currentLang, ConversationNotifier notifier) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surfaceElevated,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.65,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (_, scrollController) {
+            return Column(
+              children: [
+                // Drag Handle
+                Center(
+                  child: Container(
+                    margin: const EdgeInsets.only(top: 12, bottom: 8),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceBorder,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.translate_rounded, color: AppTheme.primaryNeon, size: 22),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Voice & Chat Language',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                            ),
+                            Text(
+                              'भाषा निवडा / भाषा चुनें / Choose Language',
+                              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 20, color: AppTheme.textMuted),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(color: AppTheme.surfaceBorder, height: 1),
+                Expanded(
+                  child: ListView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    children: [
+                      // Indian Languages Section
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                        child: Text(
+                          'INDIAN REGIONAL LANGUAGES (भारतीय भाषा)',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.1,
+                            color: AppTheme.primaryNeon,
+                          ),
+                        ),
+                      ),
+                      _buildLanguageTile(ctx, AppLanguage.marathi, currentLang, notifier),
+                      _buildLanguageTile(ctx, AppLanguage.hindi, currentLang, notifier),
+                      _buildLanguageTile(ctx, AppLanguage.englishIN, currentLang, notifier),
+                      _buildLanguageTile(ctx, AppLanguage.gujarati, currentLang, notifier),
+                      _buildLanguageTile(ctx, AppLanguage.tamil, currentLang, notifier),
+                      _buildLanguageTile(ctx, AppLanguage.telugu, currentLang, notifier),
+                      _buildLanguageTile(ctx, AppLanguage.bengali, currentLang, notifier),
+                      _buildLanguageTile(ctx, AppLanguage.kannada, currentLang, notifier),
+                      _buildLanguageTile(ctx, AppLanguage.malayalam, currentLang, notifier),
+
+                      const SizedBox(height: 16),
+                      // Global Languages Section
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                        child: Text(
+                          'GLOBAL LANGUAGES',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.1,
+                            color: AppTheme.primaryNeon,
+                          ),
+                        ),
+                      ),
+                      _buildLanguageTile(ctx, AppLanguage.englishUS, currentLang, notifier),
+                      _buildLanguageTile(ctx, AppLanguage.spanish, currentLang, notifier),
+                      _buildLanguageTile(ctx, AppLanguage.french, currentLang, notifier),
+                      _buildLanguageTile(ctx, AppLanguage.german, currentLang, notifier),
+                      _buildLanguageTile(ctx, AppLanguage.japanese, currentLang, notifier),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildLanguageTile(
+    BuildContext ctx,
+    AppLanguage language,
+    AppLanguage currentLanguage,
+    ConversationNotifier notifier,
+  ) {
+    final isSelected = language == currentLanguage;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: isSelected ? AppTheme.primaryNeon.withValues(alpha: 0.1) : AppTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isSelected ? AppTheme.primaryNeon : AppTheme.surfaceBorder,
+          width: isSelected ? 1.5 : 1,
+        ),
+      ),
+      child: ListTile(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        leading: Container(
+          width: 36,
+          height: 36,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceElevated,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(language.flag, style: const TextStyle(fontSize: 18)),
+        ),
+        title: Text(
+          language.nativeName,
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
+            color: isSelected ? AppTheme.primaryNeon : AppTheme.textPrimary,
+          ),
+        ),
+        subtitle: Text(
+          '${language.displayName} • STT: ${language.sttLocale}',
+          style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+        ),
+        trailing: isSelected
+            ? const Icon(Icons.check_circle_rounded, color: AppTheme.primaryNeon, size: 20)
+            : const Icon(Icons.radio_button_unchecked_rounded, color: AppTheme.textMuted, size: 18),
+        onTap: () {
+          notifier.setLanguage(language);
+          Navigator.pop(ctx);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: AppTheme.accentGreen,
+              duration: const Duration(seconds: 2),
+              content: Row(
+                children: [
+                  Text(language.flag, style: const TextStyle(fontSize: 16)),
+                  const SizedBox(width: 8),
+                  Text('Language switched to ${language.displayName}'),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

@@ -15,13 +15,14 @@ class MemoryManager:
         conversation_id: str, 
         companion_name: str = settings.COMPANION_NAME,
         tone: str = settings.COMPANION_TONE,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
+        language: Optional[str] = None,
     ) -> Tuple[str, List[Dict[str, str]]]:
         """
         Builds the system prompt and conversation history list.
         Prepends user profile memories and rolling summary if available.
         """
-        base_prompt = get_system_prompt(companion_name, tone)
+        base_prompt = get_system_prompt(companion_name, tone, language)
 
         # Inject persistent user memories
         if user_id:

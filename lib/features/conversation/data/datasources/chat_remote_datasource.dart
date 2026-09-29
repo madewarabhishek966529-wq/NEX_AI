@@ -12,6 +12,7 @@ abstract class ChatRemoteDataSource {
     required String message,
     String? companionName,
     String? tone,
+    String? language,
     String? imageBase64,
   });
   Stream<String> streamMessage({
@@ -20,6 +21,7 @@ abstract class ChatRemoteDataSource {
     required String message,
     String? companionName,
     String? tone,
+    String? language,
     String? imageBase64,
   });
   Future<List<Message>> getHistory(String conversationId);
@@ -55,6 +57,7 @@ class ChatRemoteDataSourceImpl implements ChatRemoteDataSource {
     required String message,
     String? companionName,
     String? tone,
+    String? language,
     String? imageBase64,
   }) async {
     try {
@@ -66,6 +69,7 @@ class ChatRemoteDataSourceImpl implements ChatRemoteDataSource {
           'message': message,
           'companion_name': ?companionName,
           'tone': ?tone,
+          'language': ?language,
           'image_base64': ?imageBase64,
         },
       );
@@ -82,6 +86,7 @@ class ChatRemoteDataSourceImpl implements ChatRemoteDataSource {
     required String message,
     String? companionName,
     String? tone,
+    String? language,
     String? imageBase64,
   }) async* {
     try {
@@ -93,6 +98,7 @@ class ChatRemoteDataSourceImpl implements ChatRemoteDataSource {
           'message': message,
           'companion_name': ?companionName,
           'tone': ?tone,
+          'language': ?language,
           'image_base64': ?imageBase64,
         },
         options: Options(responseType: ResponseType.stream),

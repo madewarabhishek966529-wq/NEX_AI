@@ -43,6 +43,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., example="Hey Aura, how's your day?")
     companion_name: Optional[str] = Field(None, example="Aura")
     tone: Optional[str] = Field(None, example="supportive")
+    language: Optional[str] = Field(None, example="marathi")
     image_base64: Optional[str] = Field(None, example="data:image/jpeg;base64,...")
 
 class ChatResponse(BaseModel):
@@ -74,7 +75,8 @@ def generate_ai_response(
     system_prompt: str, 
     history: List[Dict[str, str]], 
     user_message: str,
-    image_base64: Optional[str] = None
+    image_base64: Optional[str] = None,
+    language: Optional[str] = None,
 ) -> str:
     """
     Calls Gemini or Groq based on configuration.
@@ -138,8 +140,35 @@ def generate_ai_response(
         except Exception as e:
             logger.warning(f"Groq generation error: {e}. Attempting fallback...")
 
-    # 3. Contextual Offline Fallback (ensures app works anytime during development/testing)
+    # 3. Contextual Multilingual Offline Fallback
     lower = user_message.lower().strip()
+    lang = (language or "en").lower().strip()
+
+    if "marathi" in lang or lang == "mr":
+        if "नमस्कार" in lower or "hello" in lower or "hi" in lower or "hey" in lower:
+            return f"नमस्कार! आज तुमच्याशी बोलून खूप छान वाटले. दिवस कसा चालला आहे?"
+        elif "कसा" in lower or "कशी" in lower or "how are you" in lower:
+            return f"मी एकदम उत्तम आहे! तुमच्यासोबत गप्पा मारायला सदैव उत्सुक आहे."
+        elif "कोण आहेस" in lower or "who are you" in lower:
+            return f"मी {settings.COMPANION_NAME}, तुमची पर्सनल व्हॉइस साथीदार आहे. सांगा, काय चालू आहे?"
+        elif "bye" in lower or "काळजी" in lower or "night" in lower:
+            return f"शुभ रात्री! काळजी घ्या, जेव्हा हवं तेव्हा मी इथेच तुमच्यासोबत आहे."
+        else:
+            return f"मी तुमचे म्हणणे काळजीपूर्वक ऐकत आहे. याविषयी मला आणखी सांगा!"
+
+    if "hindi" in lang or lang == "hi":
+        if "नमस्ते" in lower or "hello" in lower or "hi" in lower or "hey" in lower:
+            return f"नमस्ते! आज आपसे बात करके बहुत अच्छा लगा। आपका दिन कैसा बीत रहा है?"
+        elif "कैसे" in lower or "कैसी" in lower or "how are you" in lower:
+            return f"मैं बहुत बढ़िया हूँ और आपसे बातें करने के लिए पूरी तरह तैयार हूँ!"
+        elif "कौन हो" in lower or "who are you" in lower:
+            return f"मैं {settings.COMPANION_NAME} हूँ, आपकी पर्सनल वॉइस साथी। बताइए क्या सोच रहे हैं?"
+        elif "bye" in lower or "अलविदा" in lower or "night" in lower:
+            return f"शुभ रात्रि! अपना ख्याल रखें, जब भी बात करनी हो मैं यहीं मौजूद हूँ।"
+        else:
+            return f"मैं आपकी बात बहुत ध्यान से सुन रहा हूँ। इसके बारे में थोड़ा और बताइए!"
+
+    # Default English fallback
     if "hello" in lower or "hi" in lower or "hey" in lower:
         return f"Hey there! It's great to hear your voice today. What's on your mind?"
     elif "how are you" in lower:
@@ -157,7 +186,8 @@ async def stream_ai_response(
     system_prompt: str, 
     history: List[Dict[str, str]], 
     user_message: str,
-    image_base64: Optional[str] = None
+    image_base64: Optional[str] = None,
+    language: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Streams AI tokens asynchronously from Gemini, Groq, or fallback generator.
@@ -225,7 +255,7 @@ async def stream_ai_response(
             logger.warning(f"Groq streaming error: {e}. Falling back...")
 
     # 3. Contextual Offline Fallback Streaming (smooth simulated word flow)
-    full_text = generate_ai_response(system_prompt, history, user_message)
+    full_text = generate_ai_response(system_prompt, history, user_message, language=language)
     words = full_text.split(" ")
     for i, w in enumerate(words):
         yield (w + " " if i < len(words) - 1 else w)
@@ -275,7 +305,8 @@ async def chat(req: ChatRequest):
         conversation_id=req.conversation_id,
         companion_name=name,
         tone=tone,
-        user_id=req.user_id
+        user_id=req.user_id,
+        language=req.language
     )
 
     # 2. Generate response
@@ -283,7 +314,8 @@ async def chat(req: ChatRequest):
         system_prompt, 
         history, 
         req.message,
-        image_base64=req.image_base64
+        image_base64=req.image_base64,
+        language=req.language
     )
 
     # 3. Save both user message and assistant response
@@ -322,7 +354,8 @@ async def chat_stream(req: ChatRequest):
         conversation_id=req.conversation_id,
         companion_name=name,
         tone=tone,
-        user_id=req.user_id
+        user_id=req.user_id,
+        language=req.language
     )
 
     async def event_generator():
@@ -331,7 +364,8 @@ async def chat_stream(req: ChatRequest):
             system_prompt, 
             history, 
             req.message,
-            image_base64=req.image_base64
+            image_base64=req.image_base64,
+            language=req.language
         ):
             collected_chunks.append(chunk)
             payload = json.dumps({"token": chunk, "done": False})

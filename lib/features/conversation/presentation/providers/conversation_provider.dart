@@ -89,6 +89,7 @@ class ConversationStateData {
   final String companionName;
   final CompanionTone companionTone;
   final bool isTtsEnabled;
+  final AppLanguage selectedLanguage;
   final String? pendingImageBase64;
   final AuraTheme auraTheme;
 
@@ -106,6 +107,7 @@ class ConversationStateData {
     this.companionName = AppConstants.defaultCompanionName,
     this.companionTone = AppConstants.defaultCompanionTone,
     this.isTtsEnabled = true,
+    this.selectedLanguage = AppConstants.defaultLanguage,
     this.pendingImageBase64,
     this.auraTheme = AuraTheme.cyberCyan,
   });
@@ -125,6 +127,7 @@ class ConversationStateData {
     String? companionName,
     CompanionTone? companionTone,
     bool? isTtsEnabled,
+    AppLanguage? selectedLanguage,
     String? pendingImageBase64,
     bool clearPendingImage = false,
     AuraTheme? auraTheme,
@@ -143,6 +146,7 @@ class ConversationStateData {
       companionName: companionName ?? this.companionName,
       companionTone: companionTone ?? this.companionTone,
       isTtsEnabled: isTtsEnabled ?? this.isTtsEnabled,
+      selectedLanguage: selectedLanguage ?? this.selectedLanguage,
       pendingImageBase64: clearPendingImage ? null : (pendingImageBase64 ?? this.pendingImageBase64),
       auraTheme: auraTheme ?? this.auraTheme,
     );
@@ -165,6 +169,8 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
   final FlutterTts _tts = FlutterTts();
   final ImagePicker _imagePicker = ImagePicker();
   bool _isSttInitialized = false;
+  bool _speechSubmitted = false;
+  bool _isProcessingMessage = false;
 
   ConversationNotifier({
     required this.sendMessageUseCase,
@@ -182,11 +188,12 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
 
   Future<void> _initTts() async {
     try {
-      await _tts.setLanguage('en-US');
+      await _tts.setLanguage(state.selectedLanguage.ttsLocale);
       final rate = prefs.getDouble(AppConstants.keyTtsRate) ?? AppConstants.defaultTtsRate;
       final pitch = prefs.getDouble(AppConstants.keyTtsPitch) ?? AppConstants.defaultTtsPitch;
       await _tts.setSpeechRate(rate);
       await _tts.setPitch(pitch);
+      await _tts.awaitSynthCompletion(true);
 
       _tts.setStartHandler(() {
         state = state.copyWith(
@@ -196,6 +203,13 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
       });
 
       _tts.setCompletionHandler(() {
+        state = state.copyWith(
+          isSpeaking: false,
+          avatarState: ConversationState.idle,
+        );
+      });
+
+      _tts.setCancelHandler(() {
         state = state.copyWith(
           isSpeaking: false,
           avatarState: ConversationState.idle,
@@ -224,6 +238,8 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
       (e) => e.name == auraName,
       orElse: () => AuraTheme.cyberCyan,
     );
+    final savedLangCode = prefs.getString(AppConstants.keyLanguage);
+    final language = AppLanguageX.fromString(savedLangCode);
 
     var convId = await localDataSource.getActiveConversationId();
     if (convId == null || convId.isEmpty) {
@@ -239,10 +255,16 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
       companionName: companionName,
       companionTone: tone,
       isTtsEnabled: autoSpeak,
+      selectedLanguage: language,
       messages: history,
       avatarState: ConversationState.idle,
       auraTheme: auraTheme,
     );
+
+    // Apply language to TTS
+    try {
+      await _tts.setLanguage(language.ttsLocale);
+    } catch (_) {}
 
     loadUserConversations();
   }
@@ -301,29 +323,31 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
     // If TTS is talking, cancel it before user speaks
     if (state.isSpeaking) {
       await _tts.stop();
-      state = state.copyWith(isSpeaking: false);
+      state = state.copyWith(isSpeaking: false, avatarState: ConversationState.idle);
     }
 
+    _speechSubmitted = false;
+
     try {
-      if (!_isSttInitialized) {
-        _isSttInitialized = await _stt.initialize(
+      bool isAvailable = _isSttInitialized;
+      if (!isAvailable) {
+        isAvailable = await _stt.initialize(
           onError: (val) {
-            debugPrint('STT Error: $val');
+            debugPrint('STT Error: ${val.errorMsg}');
             state = state.copyWith(
               isListening: false,
               avatarState: ConversationState.idle,
-              errorMessage: val.errorMsg,
+              errorMessage: val.errorMsg.isNotEmpty ? val.errorMsg : 'Speech recognition error',
             );
           },
           onStatus: (val) {
             debugPrint('STT Status: $val');
             if (val == 'done' || val == 'notListening') {
-              if (state.isListening && state.currentTranscript.isNotEmpty) {
-                sendSpokenMessage(state.currentTranscript);
-              }
+              _onSpeechSessionEnded();
             }
           },
         );
+        _isSttInitialized = isAvailable;
       }
 
       if (_isSttInitialized) {
@@ -334,25 +358,34 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
           clearError: true,
         );
 
+        final targetLocale = state.selectedLanguage.sttLocale;
+        debugPrint('STT Listening with locale: $targetLocale');
+
         await _stt.listen(
           onResult: (result) {
+            final words = result.recognizedWords;
             state = state.copyWith(
-              currentTranscript: result.recognizedWords,
+              currentTranscript: words,
             );
 
-            if (result.finalResult && result.recognizedWords.trim().isNotEmpty) {
+            // If final result arrived and hasn't been submitted yet
+            if (result.finalResult && words.trim().isNotEmpty && !_speechSubmitted) {
+              _speechSubmitted = true;
               _stt.stop();
-              sendSpokenMessage(result.recognizedWords.trim());
+              sendSpokenMessage(words.trim());
             }
           },
           listenOptions: SpeechListenOptions(
-            listenMode: ListenMode.confirmation,
+            listenMode: ListenMode.dictation,
             cancelOnError: true,
             partialResults: true,
+            localeId: targetLocale,
           ),
         );
       } else {
         state = state.copyWith(
+          isListening: false,
+          avatarState: ConversationState.idle,
           errorMessage: 'Speech recognition unavailable on this device.',
         );
       }
@@ -365,27 +398,53 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
     }
   }
 
-  Future<void> stopListening() async {
-    await _stt.stop();
-    final transcript = state.currentTranscript.trim();
-    state = state.copyWith(
-      isListening: false,
-      avatarState: transcript.isNotEmpty ? ConversationState.thinking : ConversationState.idle,
-    );
+  void _onSpeechSessionEnded() {
+    if (state.isListening && !_speechSubmitted && state.currentTranscript.trim().isNotEmpty) {
+      _speechSubmitted = true;
+      final text = state.currentTranscript.trim();
+      sendSpokenMessage(text);
+    } else if (state.isListening && !_speechSubmitted) {
+      state = state.copyWith(
+        isListening: false,
+        avatarState: ConversationState.idle,
+      );
+    }
+  }
 
-    if (transcript.isNotEmpty) {
+  Future<void> stopListening() async {
+    try {
+      await _stt.stop();
+    } catch (_) {}
+
+    final transcript = state.currentTranscript.trim();
+    if (!_speechSubmitted && transcript.isNotEmpty) {
+      _speechSubmitted = true;
+      state = state.copyWith(
+        isListening: false,
+        avatarState: ConversationState.thinking,
+      );
       await sendSpokenMessage(transcript);
+    } else {
+      state = state.copyWith(
+        isListening: false,
+        avatarState: ConversationState.idle,
+      );
     }
   }
 
   Future<void> sendSpokenMessage(String text) async {
     if (text.trim().isEmpty) return;
+    if (_isProcessingMessage) return; // Prevent concurrent processing / duplicates
+    _isProcessingMessage = true;
 
     final trimmed = text.trim();
     final convId = state.conversationId;
     final userId = state.userId;
 
-    if (convId == null || userId == null) return;
+    if (convId == null || userId == null) {
+      _isProcessingMessage = false;
+      return;
+    }
 
     // Interrupt any ongoing speech
     if (state.isSpeaking) {
@@ -417,6 +476,7 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
       messages: [...state.messages, userMsg, initialAssistantMsg],
       currentTranscript: '',
       isListening: false,
+      isSpeaking: false,
       avatarState: ConversationState.thinking,
       clearError: true,
       clearPendingImage: true,
@@ -431,6 +491,7 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
         message: trimmed,
         companionName: state.companionName,
         tone: state.companionTone.value,
+        language: state.selectedLanguage.code,
         imageBase64: image,
       )) {
         accumulated += token;
@@ -450,6 +511,7 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
         state = state.copyWith(
           messages: updated,
           avatarState: ConversationState.speaking,
+          isSpeaking: true,
         );
       }
 
@@ -458,17 +520,55 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
 
       // 3. Voice output (TTS)
       if (state.isTtsEnabled && accumulated.trim().isNotEmpty) {
-        await _tts.stop();
-        await _tts.speak(accumulated.trim());
+        try {
+          await _tts.stop();
+          await _tts.setLanguage(state.selectedLanguage.ttsLocale);
+          await _tts.speak(accumulated.trim());
+
+          // Safety timeout in case TTS engine never fires completion callback
+          final wordCount = accumulated.trim().split(RegExp(r'\s+')).length;
+          final estimatedMs = (wordCount * 450).clamp(2500, 15000);
+          Future.delayed(Duration(milliseconds: estimatedMs), () {
+            if (state.isSpeaking) {
+              state = state.copyWith(
+                isSpeaking: false,
+                avatarState: ConversationState.idle,
+              );
+            }
+          });
+        } catch (ttsErr) {
+          debugPrint('TTS Error: $ttsErr');
+          state = state.copyWith(
+            isSpeaking: false,
+            avatarState: ConversationState.idle,
+          );
+        }
       } else {
-        await Future.delayed(const Duration(milliseconds: 1000));
-        state = state.copyWith(avatarState: ConversationState.idle);
+        await Future.delayed(const Duration(milliseconds: 500));
+        state = state.copyWith(
+          isSpeaking: false,
+          avatarState: ConversationState.idle,
+        );
       }
     } catch (e) {
       state = state.copyWith(
+        isListening: false,
+        isSpeaking: false,
         avatarState: ConversationState.idle,
         errorMessage: e.toString(),
       );
+    } finally {
+      _isProcessingMessage = false;
+    }
+  }
+
+  Future<void> setLanguage(AppLanguage language) async {
+    await prefs.setString(AppConstants.keyLanguage, language.code);
+    state = state.copyWith(selectedLanguage: language);
+    try {
+      await _tts.setLanguage(language.ttsLocale);
+    } catch (e) {
+      debugPrint('Error updating TTS language: $e');
     }
   }
 
@@ -545,7 +645,12 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
     });
   }
 
-  void updateCompanionSettings({String? name, CompanionTone? tone, bool? ttsEnabled}) {
+  void updateCompanionSettings({
+    String? name,
+    CompanionTone? tone,
+    bool? ttsEnabled,
+    AppLanguage? language,
+  }) {
     if (name != null) {
       prefs.setString(AppConstants.keyCompanionName, name);
     }
@@ -555,11 +660,16 @@ class ConversationNotifier extends StateNotifier<ConversationStateData> {
     if (ttsEnabled != null) {
       prefs.setBool(AppConstants.keyAutoSpeak, ttsEnabled);
     }
+    if (language != null) {
+      prefs.setString(AppConstants.keyLanguage, language.code);
+      _tts.setLanguage(language.ttsLocale);
+    }
 
     state = state.copyWith(
       companionName: name ?? state.companionName,
       companionTone: tone ?? state.companionTone,
       isTtsEnabled: ttsEnabled ?? state.isTtsEnabled,
+      selectedLanguage: language ?? state.selectedLanguage,
     );
   }
 

@@ -35,6 +35,7 @@ class ChatRepositoryImpl implements ChatRepository {
     required String message,
     String? companionName,
     String? tone,
+    String? language,
     String? imageBase64,
   }) async {
     try {
@@ -44,6 +45,7 @@ class ChatRepositoryImpl implements ChatRepository {
         message: message,
         companionName: companionName,
         tone: tone,
+        language: language,
         imageBase64: imageBase64,
       );
 
@@ -68,7 +70,7 @@ class ChatRepositoryImpl implements ChatRepository {
       return aiResponse;
     } catch (_) {
       // Offline fallback companion responses
-      final fallbackResponse = _generateOfflineFallback(message, companionName ?? 'Aura');
+      final fallbackResponse = _generateOfflineFallback(message, companionName ?? 'Aura', language);
       
       final currentCached = await localDataSource.getCachedMessages(conversationId);
       final updated = List<Message>.from(currentCached)
@@ -98,6 +100,7 @@ class ChatRepositoryImpl implements ChatRepository {
     required String message,
     String? companionName,
     String? tone,
+    String? language,
     String? imageBase64,
   }) async* {
     String accumulated = '';
@@ -108,13 +111,14 @@ class ChatRepositoryImpl implements ChatRepository {
         message: message,
         companionName: companionName,
         tone: tone,
+        language: language,
         imageBase64: imageBase64,
       )) {
         accumulated += token;
         yield token;
       }
     } catch (_) {
-      final fallback = _generateOfflineFallback(message, companionName ?? 'Aura');
+      final fallback = _generateOfflineFallback(message, companionName ?? 'Aura', language);
       accumulated = fallback;
       final words = fallback.split(' ');
       for (int i = 0; i < words.length; i++) {
@@ -194,8 +198,45 @@ class ChatRepositoryImpl implements ChatRepository {
     }
   }
 
-  String _generateOfflineFallback(String input, String companionName) {
+  String _generateOfflineFallback(String input, String companionName, [String? language]) {
     final lower = input.toLowerCase().trim();
+    final lang = language?.toLowerCase().trim() ?? 'en';
+
+    if (lang == 'mr' || lang.contains('marathi')) {
+      if (lower.contains('नमस्कार') || lower.contains('hello') || lower.contains('hi')) {
+        return 'नमस्कार! आज तुमच्याशी बोलून खूप छान वाटले. सांगा, मी कशी मदत करू शकेन?';
+      } else if (lower.contains('कसा') || lower.contains('कशी') || lower.contains('how are you')) {
+        return 'मी एकदम उत्तम आहे! तुमच्यासोबत गप्पा मारायला खूप उत्सुक आहे. दिवस कसा चालला आहे?';
+      } else if (lower.contains('bye') || lower.contains('काळजी') || lower.contains('night')) {
+        return 'शुभ रात्री! काळजी घ्या, जेव्हा हवं तेव्हा मी इथेच तुमच्यासोबत आहे.';
+      } else {
+        final responses = [
+          'मी तुमचे म्हणणे काळजीपूर्वक ऐकत आहे. याविषयी आणखी सांगा!',
+          'खूप छान विचार आहे हा. पुढे काय करायचे ठरवले आहे?',
+          'तुमच्याशी गप्पा मारायला मला खूप आवडते. बोला, काय विचार करत आहात?',
+        ];
+        return responses[Random().nextInt(responses.length)];
+      }
+    }
+
+    if (lang == 'hi' || lang.contains('hindi')) {
+      if (lower.contains('नमस्ते') || lower.contains('hello') || lower.contains('hi')) {
+        return 'नमस्ते! आज आपसे बात करके बहुत खुशी हुई। बताइए, मैं आपकी क्या सहायता करूँ?';
+      } else if (lower.contains('कैसे') || lower.contains('कैसी') || lower.contains('how are you')) {
+        return 'मैं बिल्कुल ठीक हूँ और आपसे बातें करने के लिए उत्साहित हूँ! आपका दिन कैसा बीत रहा है?';
+      } else if (lower.contains('bye') || lower.contains('अलविदा') || lower.contains('night')) {
+        return 'शुभ रात्रि! अपना ध्यान रखें, जब भी बात करनी हो, मैं यहीं मौजूद हूँ।';
+      } else {
+        final responses = [
+          'मैं आपकी बात बहुत ध्यान से सुन रहा हूँ। इसके बारे में थोड़ा और बताइए!',
+          'यह तो बहुत दिलचस्प बात है। आगे का क्या विचार है?',
+          'आपसे बात करके हमेशा नया सीखने को मिलता है। आप क्या सोच रहे हैं?',
+        ];
+        return responses[Random().nextInt(responses.length)];
+      }
+    }
+
+    // Default English
     if (lower.contains('hello') || lower.contains('hi') || lower.contains('hey')) {
       return 'Hey there! Wonderful to hear from you today. How is everything going?';
     } else if (lower.contains('how are you')) {

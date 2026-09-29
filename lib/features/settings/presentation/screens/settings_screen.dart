@@ -21,6 +21,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late bool _autoSpeak;
   late double _speechRate;
   late double _speechPitch;
+  late AppLanguage _selectedLanguage;
 
   bool _isTestingConnection = false;
   String? _connectionStatus;
@@ -41,6 +42,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     _selectedTone = convState.companionTone;
     _selectedAura = convState.auraTheme;
+    _selectedLanguage = convState.selectedLanguage;
     _autoSpeak = convState.isTtsEnabled;
     _speechRate = prefs.getDouble(AppConstants.keyTtsRate) ?? AppConstants.defaultTtsRate;
     _speechPitch = prefs.getDouble(AppConstants.keyTtsPitch) ?? AppConstants.defaultTtsPitch;
@@ -108,6 +110,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     await prefs.setString(AppConstants.keyCompanionName, newName);
     await prefs.setString(AppConstants.keyCompanionTone, _selectedTone.value);
+    await prefs.setString(AppConstants.keyLanguage, _selectedLanguage.code);
     await prefs.setBool(AppConstants.keyAutoSpeak, _autoSpeak);
     await prefs.setDouble(AppConstants.keyTtsRate, _speechRate);
     await prefs.setDouble(AppConstants.keyTtsPitch, _speechPitch);
@@ -121,6 +124,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       name: newName,
       tone: _selectedTone,
       ttsEnabled: _autoSpeak,
+      language: _selectedLanguage,
     );
     ref.read(conversationProvider.notifier).updateAuraTheme(_selectedAura);
 
@@ -220,9 +224,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _playVoiceSample() async {
     try {
+      await _testTts.stop();
+      await _testTts.setLanguage(_selectedLanguage.ttsLocale);
       await _testTts.setSpeechRate(_speechRate);
       await _testTts.setPitch(_speechPitch);
-      await _testTts.speak('Hello! I am ${_nameController.text.trim()}, your voice companion.');
+      await _testTts.speak(_selectedLanguage.sampleGreeting);
     } catch (_) {}
   }
 
@@ -401,6 +407,57 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                 );
               },
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Section: Voice & Chat Language
+          _buildSectionHeader('VOICE & CHAT LANGUAGE', Icons.translate_rounded),
+          const SizedBox(height: 8),
+          const Text(
+            'Select language for speech recognition (STT), voice synthesis (TTS), and companion responses.',
+            style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceElevated,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppTheme.primaryNeon.withValues(alpha: 0.4)),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<AppLanguage>(
+                value: _selectedLanguage,
+                isExpanded: true,
+                dropdownColor: AppTheme.surfaceElevated,
+                icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.primaryNeon),
+                items: AppLanguage.values.map((lang) {
+                  return DropdownMenuItem<AppLanguage>(
+                    value: lang,
+                    child: Row(
+                      children: [
+                        Text(lang.flag, style: const TextStyle(fontSize: 18)),
+                        const SizedBox(width: 10),
+                        Text(
+                          lang.nativeName,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '(${lang.displayName.split('(').last.replaceAll(')', '')})',
+                          style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+                onChanged: (val) {
+                  if (val != null) {
+                    setState(() => _selectedLanguage = val);
+                  }
+                },
+              ),
             ),
           ),
           const SizedBox(height: 24),

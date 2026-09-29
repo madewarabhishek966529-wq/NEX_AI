@@ -11,6 +11,7 @@ class SendMessageUseCase {
     required String message,
     String? companionName,
     String? tone,
+    String? language,
     String? imageBase64,
   }) {
     return repository.sendMessage(
@@ -19,6 +20,7 @@ class SendMessageUseCase {
       message: message,
       companionName: companionName,
       tone: tone,
+      language: language,
       imageBase64: imageBase64,
     );
   }
