@@ -101,12 +101,24 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(6),
+              width: 28,
+              height: 28,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppTheme.primaryNeon.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.primaryNeon.withValues(alpha: 0.35),
+                    blurRadius: 8,
+                  ),
+                ],
               ),
-              child: const Icon(Icons.blur_on_rounded, color: AppTheme.primaryNeon, size: 20),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.asset(
+                  'assets/icons/app_logo.png',
+                  fit: BoxFit.cover,
+                ),
+              ),
             ),
             const SizedBox(width: 8),
             Text(

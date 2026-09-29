@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icons/app_logo.png" width="130" height="130" alt="NEX_AI App Logo" />
+</p>
+
 # NEX_AI — Voice AI Companion (JARVIS / Aura Style)
 
 An autonomous voice-first AI companion built with **Flutter** (Clean Architecture + Riverpod) and **FastAPI** (Gemini/Groq + SQLite persistence). Talks back with spoken audio, remembers conversations using sliding-window & rolling-summary memory, and reacts dynamically through a multi-state holographic animated avatar.
